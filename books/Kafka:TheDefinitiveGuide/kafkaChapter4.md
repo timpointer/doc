@@ -1,12 +1,12 @@
 ## Chapter4 Kafka Consumers
 
-### Consumers and Consumer Groups
+### 消费者和消费组
 
-Kafka consumers are typically part of a consumer group. When multiple consumers are subscribed to a topic and belong to the same consumer grorup, each consumer in the group will receive messages from a different subset of the parititions in the topic.
+Kafka的消费者通常都是一个消费组的一部分。当多个消费者订阅一个topic时并属于同一消费组，那每个组中的消费者将收到来自这一topic的不同分片的消息。
 
-### Consumer Groups and Partition Rebalance
+### 消费者和分片再平衡
 
-## Commits and Offset
+##　Commits and Offset
 消费者提交每个分片的offset到kafka的__consumer_offset这个topic上。
 当有消费者宕机或者有新消费者加入时，会出发再平衡，每个消费者会收到新的分片的，然后从新分片的offset处开始更新数据。
 
@@ -20,7 +20,7 @@ Kafka consumers are typically part of a consumer group. When multiple consumers 
 正常情况下采用异步，当要退出或再平衡时，使用同步。参考书上代码。
 
 分片提交
-当一次poll的数量太大时，可以采用分片提交，自己现实计数，并中途提交，参考书上。
+当一次poll的数量太大时，可以采用分片提交，自己实现计数，并中途提交，参考书上。
 
 ### 监听再平衡事件
 消费者系统在丢失分片所有权之前，进行一些自定义操作，比如关闭资源，清空积压任务，提交offset等等，参考书上代码。
@@ -32,7 +32,43 @@ Kafka consumers are typically part of a consumer group. When multiple consumers 
 ### 如何正确退出
 唯一的方法就是在另一个线程里面调用consumer.wakeup方法。消费者会上抛一个WakeUpException，记住在退出是调用consumer.close方法。客户端会自动通知协调者自己已退出消费组，系统会自动再平衡，而不需要等待session超时。
 
-## 单独的消费者，为什么只使用消费者而不同消费组
+### 单独的消费者，为什么只使用消费者而不同消费组
 有些情况下，就只有一个消费者，这时就不需要引入复杂的消费组，也没有再平衡。
 只需要在创建消费者时指定topic或是具体的分片，但不同同时使用。
 如果是具体分片，那么有新分片加入topic时，是不会被通知到的，需要自己去定期轮询分片信息。
+
+### 文件格式
+kafka接口协议和底层持久化都用的同一种数据格式，这样就避免了数据在传输过程中的重复转换的过程。
+每条消息包含key,value, offset，消息长度，checksum(校验数据完整性),编码格式，magic编码版本和时间戳
+时间戳能设置为生产端产生还是broker接受端产生
+
+###　索引
+kafka允许用户从任意offset开始消费消息，broker如何能快速定位到具体哪个segment的哪个位置呢？利用索引维护了一个offset和segment中位置的对应关系。
+索引也是分为segments,kafka不维护索引的完整性，一旦完整性破坏，kafka会更具持久化数据重新创建新的索引。管理员也能手动删除索引，索引会被自己动创建。
+
+### 压缩
+当消费者只关心的数据当前状态的场景时，我们可以对topic中的数据进行压缩，只保留相同key的最新一条消息。
+kafka允许topic的留存政策为删除（删除比留存时间更久以前的数据），压缩（仅保存相同key的最新一条数据），很明显压缩政策只在有key场景中有用，如果key为null，则压缩失败。
+
+### 压缩如何工作
+首先每个日志分为，干净（被压缩过的）和脏（未被压缩的）的两部分
+如果压缩设置被开启，kafka会开启一个压缩管理线程，然后再开启一堆压缩线程负责实际压缩工作。按照干净率来选择需要被压缩的segement。
+
+为了压缩一个分片，清洁员会读取分布上的脏，然后创建map用来去重。map里面记录了每个消息的hash值和对应的offset。这样整理1G的数据，只需要24MB的内存，如果数据重复较多，可能内存占用更少。
+
+kafka管理员需要配置压缩时分配的内存。假如分配了1G内存，那5个线程，每个线程分配到200MB。虽然不需要将一个分片的mapping数据都放到内存，但必须每个segment的数据包含在内存中。假如内存太小可以调整内存配置或减少线程数。
+
+压缩后的数据会写到新的segment里，等完成后用新的segment替换原来旧的segement。
+
+### 删除事件
+如果我们保留每个key的最新事件，当我们想删除某个key时要怎么做？发送一条消息包含key和一个null的值。kafka会保留这条特殊消息（通常成为tombstone）。这条消息会被保留一段时间。比如消费者需要这条消息来删除自己数据库中的数据。如果消费者宕机几个小时之后错过了这条消息，就会导致自己的数据库中的数据没有被删除。
+
+### 何时压缩
+kafka不会对当前正在使用中的segement进行压缩，只对不活跃的segement进行。
+一般当重复脏数据比例到达50%的时才开始清理工作，这是一个比较好的权衡，不工作太频繁也不浪费太多空间，这个比例可以由管理员配置。
+
+##　总结
+kafka有太多内容，我们不能在这里一一细数，但我们希望给到你一个对于kafka这个项目的设计决策和优化等等方面的简单体验。如果你想了解更多内部信息，没有什么方法能替代得了阅读源码。
+
+
+
