@@ -1,3 +1,4 @@
+# Kafka 内部
 
 ## Ｃluster Membership
 kafka使用zookeeper来维护当前broker集群的成员。每个成员都有一个ID，可以手动设置和自动分配。每当成员启动后会向zookeeper注册自己，创建一个ephemeral node（零时节点，zookeeper会管理其生命周期，如果成员失联，则自动删除）。其他kafka组件会订阅/brokers/ids下的消息。
