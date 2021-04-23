@@ -477,4 +477,84 @@ var databaseCategory = db.categories.findOne( { _id: "Databases" } );
 db.categories.find( { left: { $gt: databaseCategory.left }, right: { $lt: databaseCategory.right } } );
 ```
 
+# 特殊场景建模
 
+## 为原子操作建模
+借书记录和库存需要原子操作
+```
+{
+    _id: 123456789,
+    title: "MongoDB: The Definitive Guide",
+    author: [ "Kristina Chodorow", "Mike Dirolf" ],
+    published_date: ISODate("2010-09-24"),
+    pages: 216,
+    language: "English",
+    publisher_id: "oreilly",
+    available: 3,
+    checkout: [ { by: "joe", date: ISODate("2012-10-15") } ]
+}
+```
+```
+db.books.updateOne (
+   { _id: 123456789, available: { $gt: 0 } },
+   {
+     $inc: { available: -1 },
+     $push: { checkout: { by: "abc", date: new Date() } }
+   }
+)
+```
+返回结果
+```
+{ "acknowledged" : true, "matchedCount" : 1, "modifiedCount" : 1 }
+```
+
+## 支持关键字查询建模
+添加一个string数组，数据库为数组里面的每个key创建一个索引，如果key很多的话，会对写入有性能影响。
+
+```
+{ title : "Moby-Dick" ,
+  author : "Herman Melville" ,
+  published : 1851 ,
+  ISBN : 0451526996 ,
+  topics : [ "whaling" , "allegory" , "revenge" , "American" ,
+    "novel" , "nautical" , "voyage" , "Cape Cod" ]
+}
+```
+创建索引
+```
+db.volumes.createIndex( { topics: 1 } )
+```
+根据keyword查询
+```
+db.volumes.findOne( { topics : "voyage" }, { title: 1 } )
+```
+
+## 为Schema版本建模
+随着应用演化，模型也会变更，通过增加Schema版本字段，来更好的应用变化。
+应用中可以通过判断schema_version值，以不同的方式处理模型。
+```
+// users collection
+
+{
+    "_id": "<ObjectId>",
+    "galactic_id": 123,
+    "name": "Anakin Skywalker",
+    "phone": "503-555-0000",
+}
+```
+```
+// users collection
+
+{
+    "_id": "<ObjectId>",
+    "galactic_id": 123,
+    "name": "Darth Vader",
+    "contact_method": {
+        "work": "503-555-0210",
+        "home": "503-555-0220",
+        "twitter": "@realdarthvader",
+        "skype": "AlwaysWithYou"
+    },
+    "schema_version": "2"
+}
+```
