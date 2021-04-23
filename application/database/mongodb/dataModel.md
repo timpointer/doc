@@ -558,3 +558,98 @@ db.volumes.findOne( { topics : "voyage" }, { title: 1 } )
     "schema_version": "2"
 }
 ```
+
+## 对时间数据建模
+一些时序性数据可以通过聚合的方式来建模
+```
+// temperatures collection
+
+{
+  "_id": 1,
+  "sensor_id": 12345,
+  "timestamp": ISODate("2019-01-31T10:00:00.000Z"),
+  "temperature": 40
+}
+{
+  "_id": 2,
+  "sensor_id": 12345,
+  "timestamp": ISODate("2019-01-31T10:01:00.000Z"),
+  "temperature": 40
+}
+{
+  "_id": 3,
+  "sensor_id": 12345,
+  "timestamp": ISODate("2019-01-31T10:02:00.000Z"),
+  "temperature": 41
+}
+...
+```
+
+```
+{
+  "_id": 1,
+  "sensor_id": 12345,
+  "start_date": ISODate("2019-01-31T10:00:00.000Z"),
+  "end_date": ISODate("2019-01-31T10:59:59.000Z"),
+  "measurements": [
+    {
+      "timestamp": ISODate("2019-01-31T10:00:00.000Z"),
+      "temperature": 40
+    },
+    {
+      "timestamp": ISODate("2019-01-31T10:01:00.000Z"),
+      "temperature": 40
+    },
+    ...
+    {
+      "timestamp": ISODate("2019-01-31T10:42:00.000Z"),
+      "temperature": 42
+    }
+  ],
+  "transaction_count": 42,
+  "sum_temperature": 1783
+}
+```
+这样减少索引的数据量，还有一些提前计算的数据被缓存了。
+
+## 建模计算后的数据
+如果有些查询需要计算大量数据，我们可以把结果持久化下来，通过触发式或轮训的方式来更新这个视图数据。
+```
+// screenings collection
+
+{
+    "theater": "Alger Cinema",
+    "location": "Lakeview, OR",
+    "movie_title": "Reservoir Dogs",
+    "num_viewers": 344,
+    "revenue": 3440
+}
+{
+    "theater": "City Cinema",
+    "location": "New York, NY",
+    "movie_title": "Reservoir Dogs",
+    "num_viewers": 1496,
+    "revenue": 22440
+}
+{
+    "theater": "Overland Park Cinema",
+    "location": "Boise, ID",
+    "movie_title": "Reservoir Dogs",
+    "num_viewers": 760,
+    "revenue": 7600
+}
+```
+
+```
+// movies collection
+
+{
+    "title": "Reservoir Dogs",
+    "total_viewers": 2600,
+    "total_revenue": 33480,
+    ...
+}
+```
+
+## 对货币建模
+// TODO
